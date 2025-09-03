@@ -1,0 +1,63 @@
+Store document contents.
+Fetch the latest version when a user joins.
+ Sample Code (Simplified Version)
+Backend (server.js)
+// Install: npm install express socket.io mongoose cors
+const express = require("express");
+const http = require("http");
+const { Server } = require("socket.io");
+const mongoose = require("mongoose");
+const cors = require("cors");
+const app = express();
+app.use(cors());
+const server = http.createServer(app);
+const io = new Server(server, { cors: { origin: "*" } });
+mongoose.connect("mongodb://localhost:27017/docs", { useNewUrlParser: true, 
+useUnifiedTopology: true });
+const DocumentSchema = new mongoose.Schema({ content: String });
+const Document = mongoose.model("Document", DocumentSchema);
+io.on("connection", async (socket) => {
+ console.log("User connected");
+ // Load document from DB
+ let doc = await Document.findOne();
+ if (!doc) doc = await Document.create({ content: "" });
+ socket.emit("load-document", doc.content);
+ // Update document
+ socket.on("send-changes", (delta) => {
+ socket.broadcast.emit("receive-changes", delta);
+ });
+// Save document
+ socket.on("save-document", async (data) => {
+ await Document.findByIdAndUpdate(doc._id, { content: data });
+ });
+});
+server.listen(3001, () => console.log("Server running on http://localhost:3001"));
+Frontend (React + Quill.js Editor)
+// Install: npm install react-quill socket.io-client
+import React, { useEffect, useState } from "react";
+import { io } from "socket.io-client";
+import ReactQuill from "react-quill";
+import "react-quill/dist/quill.snow.css";
+const socket = io("http://localhost:3001");
+function App() {
+ const [value, setValue] = useState("");
+ useEffect(() => {
+ socket.on("load-document", (document) => {
+ setValue(document);
+ });
+ socket.on("receive-changes", (delta) => {
+ setValue(delta);
+ });
+ }, []);
+ const handleChange = (content) => {
+ setValue(content);
+ socket.emit("send-changes", content);
+ socket.emit("save-document", content);
+ };
+return (
+ <div style={{ margin: "50px" }}>
+ <h2> Collaborative Document Editor</h2>
+ <ReactQuill value={value} onChange={handleChange} theme="snow" />
+ </div>
+ );
+}
