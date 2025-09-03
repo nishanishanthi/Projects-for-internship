@@ -1,0 +1,66 @@
+manifest.json
+ {
+ "manifest_version": 3,
+ "name": "Productivity Tracker",
+ "version": "1.0",
+ "permissions": ["tabs", "storage"],
+ "background": {
+ "service_worker": "background.js"
+ },
+ "action": {
+ "default_popup": "popup.html"
+ }
+}
+2. background.js (Tracks Active Tab & Time)
+let activeTab = null;
+let startTime = null;
+chrome.tabs.onActivated.addListener((activeInfo) => {
+ if (activeTab) {
+ saveTime(activeTab);
+ }
+ activeTab = activeInfo.tabId;
+ startTime = Date.now();
+});
+chrome.tabs.onRemoved.addListener((tabId) => {
+ if (tabId === activeTab) {
+ saveTime(activeTab);
+activeTab = null;
+ }
+});
+function saveTime(tabId) {
+ const timeSpent = Math.floor((Date.now() - startTime) / 1000);
+ chrome.tabs.get(tabId, (tab) => {
+ if (tab && tab.url) {
+ const domain = new URL(tab.url).hostname;
+ chrome.storage.local.get([domain], (result) => {
+ const total = (result[domain] || 0) + timeSpent;
+ chrome.storage.local.set({ [domain]: total });
+ });
+ }
+ });
+}
+3. popup.html (Quick Stats UI)
+<!DOCTYPE html>
+<html>
+<head>
+ <title>Productivity Tracker</title>
+ <style>
+ body { font-family: Arial; padding: 10px; }
+ h2 { margin: 0; }
+ </style>
+</head>
+<body>
+ <h2> Productivity Tracker</h2>
+ <ul id="stats"></ul>
+ <script src="popup.js"></script>
+</body>
+</html>
+4. popup.js (Display Stats)
+chrome.storage.local.get(null, (result) => {
+ const statsList = document.getElementById("stats");
+ for (const [domain, time] of Object.entries(result)) {
+ const li = document.createElement("li");
+ li.textContent = ${domain}: ${Math.floor(time / 60)} min;
+ statsList.appendChild(li);
+ }
+});
