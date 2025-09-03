@@ -1,0 +1,70 @@
+mkdir codtech-chat && cd codtech-chat
+npm init -y
+npm i express socket.io cors
+Project structure:
+codtech-chat/
+ server.js
+ public/
+ index.html
+ client.js
+ styles.css
+// Simple real-time chat with rooms, join/leave notices, typing indicators
+const express = require("express");
+const http = require("http");
+const cors = require("cors");
+const { Server } = require("socket.io");
+const app = express();
+app.use(cors());
+app.use(express.static("public")); // serves index.html, client.js, styles.css
+const server = http.createServer(app);
+const io = new Server(server, {
+ cors: { origin: "*", methods: ["GET", "POST"] }
+});
+// In-memory user registry: socket.id -> {username, room}
+const users = new Map();
+io.on("connection", (socket) => {
+ socket.on("join", ({ username, room }) => {
+ if (!username || !room) return;
+ users.set(socket.id, { username, room });
+ socket.join(room);
+ socket.to(room).emit("system", `${username} joined the room.`);
+ const count = [...io.sockets.adapter.rooms.get(room) || []].length;
+ io.to(room).emit("online", count);
+ });
+ socket.on("message", ({ text }) => {
+ const u = users.get(socket.id);
+ if (!u || !text?.trim()) return;
+ io.to(u.room).emit("message", {
+username: u.username,
+ text: text.trim(),
+ ts: Date.now()
+ });
+ });
+ socket.on("typing", (isTyping) => {
+ const u = users.get(socket.id);
+ if (!u) return;
+ socket.to(u.room).emit("typing", { username: u.username, isTyping });
+ });
+ socket.on("disconnect", () => {
+ const u = users.get(socket.id);
+ if (!u) return;
+ users.delete(socket.id);
+ socket.to(u.room).emit("system", `${u.username} left the room.`);
+ const count = [...io.sockets.adapter.rooms.get(u.room) || []].length;
+ io.to(u.room).emit("online", count);
+ });
+});
+app.get("/health", (_req, res) => res.json({ ok: true }));
+const PORT = process.env.PORT || 3000;
+server.listen(PORT, () => {
+ console.log(`■ Chat server running on http://localhost:${PORT}`);
+index.html
+<!doctype html>
+<html>...
+</html>
+styles.css
+/* CSS styles */
+client.js
+// JS client code
+node server.js
+Open http://localhost:3000 in two browser windows, join the same room, and chat.
